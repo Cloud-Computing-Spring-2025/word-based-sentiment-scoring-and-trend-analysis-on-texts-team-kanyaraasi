@@ -28,4 +28,3 @@ public class BigramUDF extends UDF {
         return bigrams;
     }
 }
-
