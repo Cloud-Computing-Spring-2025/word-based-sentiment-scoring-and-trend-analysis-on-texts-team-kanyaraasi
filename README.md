@@ -1,4 +1,4 @@
-# multi-stage-sentiment-analysis-Mapreduce_hive
+# Multi-stage-sentiment-analysis-Mapreduce_hive
 This is Multi-Stage Sentiment Analysis on Historical Literature application is developed with map reduce and hive
 
 ---
@@ -197,6 +197,77 @@ Converts year → decade and prepares data for aggregation.
 ### TrendReducer.java
 Sums up all sentiment scores per (bookID, decade).
 
+## Task 5: Bigram Analysis Using Hive UDF
+
+#### Implementation Overview
+
+This task uses a custom Hive UDF (`BigramUDF.java`) to extract bigrams (pairs of consecutive words) from text data. The UDF processes lemmatized text output from Task 2 and returns a list of all bigrams found in the input text.
+
+#### Hive Query Execution
+
+To use this UDF for bigram analysis, follow these steps in Hive:
+
+1. **Register the UDF**:
+```sql
+ADD JAR /path/to/BigramUDF.jar;
+CREATE TEMPORARY FUNCTION bigram_udf AS 'com.example.task5.BigramUDF';
+```
+
+2. **Create table for lemmatized text** (output from Task 2):
+```sql
+CREATE TABLE lemmatized_text (
+    book_id STRING,
+    content STRING
+)
+ROW FORMAT DELIMITED
+FIELDS TERMINATED BY '\t'
+STORED AS TEXTFILE;
+```
+
+3. **Load data** from Task 2 output:
+```sql
+LOAD DATA INPATH '/output/task2/part-r-00000' INTO TABLE lemmatized_text;
+```
+
+4. **Perform bigram analysis** and count frequencies:
+```sql
+-- Create results table
+CREATE TABLE bigram_results (
+    bigram STRING,
+    count INT
+);
+
+-- Extract and count bigrams
+INSERT OVERWRITE TABLE bigram_results
+SELECT 
+    bigram,
+    COUNT(*) as count
+FROM lemmatized_text
+LATERAL VIEW explode(bigram_udf(content)) bigrams AS bigram
+GROUP BY bigram
+ORDER BY count DESC;
+```
+
+5. **Save results** to HDFS:
+```sql
+INSERT OVERWRITE DIRECTORY '/output/task5'
+ROW FORMAT DELIMITED
+FIELDS TERMINATED BY ','
+SELECT * FROM bigram_results;
+```
+
+#### Expected Output
+
+The output file with bigrams and their frequencies:
+```
+all_the,1254
+of_the,983
+in_the,872
+to_the,654
+and_the,587
+...
+```
+
 ## Steps to run
 
 Commands to run
@@ -385,6 +456,25 @@ exit
 ```
 ```bash
 docker cp resourcemanager:/opt/hadoop-2.7.4/share/hadoop/mapreduce/task4 shared-folder/output/task4
+```
+
+### Task 5
+
+**Transfer the JAR** to your Hadoop cluster:
+```bash
+docker cp target/BigramUDF.jar resourcemanager:/opt/hadoop-2.7.4/share/hadoop/mapreduce
+```
+
+**Execute the Hive queries**:
+```bash
+docker exec -it hive-server /bin/bash
+hive -f bigram_analysis.hql
+```
+
+**Retrieve results**:
+```bash
+hdfs dfs -get /output/task5 /opt/hadoop-2.7.4/share/hadoop/mapreduce/
+docker cp resourcemanager:/opt/hadoop-2.7.4/share/hadoop/mapreduce/task5 shared-folder/output/task5
 ```
 ## Challenges Faced
 - Integration of CoreNLP with Hadoop MapReduce.
